@@ -1,10 +1,11 @@
-use crate::Instruction;
+use crate::Instruction::{self, *};
 
-pub fn interpret() {
-    let filename = std::env::args().nth(1).unwrap();
-    let source = std::fs::read(filename).unwrap();
-    Program::new(&source).run();
+pub fn interpret(source: &[u8]) -> Result<(), UnbalancedBrackets> {
+    Program::new(source)?.run();
+    Ok(())
 }
+
+pub(crate) struct UnbalancedBrackets(pub char, pub usize);
 
 struct Program {
     pc: usize,
@@ -14,90 +15,73 @@ struct Program {
 }
 
 impl Program {
-    fn new(source: &[u8]) -> Program {
-        // Convert to Vec<Instruction>
-        let instructions = source
-            .into_iter()
-            .filter_map(|b| match b {
-                b'+' => Some(Instruction::Inc),
-                b'-' => Some(Instruction::Dec),
-                b'.' => Some(Instruction::Output),
-                b',' => Some(Instruction::Input),
-                b'>' => Some(Instruction::MoveR),
-                b'<' => Some(Instruction::MoveL),
-                b'[' => Some(Instruction::JumpR),
-                b']' => Some(Instruction::JumpL),
-                _ => None,
-            })
-            .collect::<Vec<Instruction>>();
+    fn new(source: &[u8]) -> Result<Program, UnbalancedBrackets> {
+        let mut instructions = Vec::new();
+        let mut bracket_stack = Vec::new();
 
-        Program {
+        for b in source {
+            let inst = match b {
+                b'+' => Inc,
+                b'-' => Dec,
+                b'.' => Output,
+                b',' => Input,
+                b'>' => MoveR,
+                b'<' => MoveL,
+                b'[' => {
+                    let curr_addr = instructions.len();
+                    bracket_stack.push(curr_addr);
+                    JumpR(0)
+                }
+                b']' => {
+                    let curr_addr = instructions.len();
+                    match bracket_stack.pop() {
+                        Some(pair_addr) => {
+                            instructions[pair_addr] = JumpR(curr_addr);
+                            JumpL(pair_addr)
+                        }
+                        None => return Err(UnbalancedBrackets(']', curr_addr)),
+                    }
+                }
+                _ => continue,
+            };
+        }
+
+        if let Some(unpaired_bracket) = bracket_stack.pop() {
+            return Err(UnbalancedBrackets('[', unpaired_bracket));
+        }
+
+        Ok(Program {
             pc: 0,
             ptr: 0,
             instructions,
             memory: [0; 30000],
-        }
+        })
     }
 
     fn run(&mut self) {
         'program: loop {
             match self.instructions[self.pc] {
-                Instruction::Inc => self.memory[self.ptr] = self.memory[self.ptr].wrapping_add(1),
-                Instruction::Dec => self.memory[self.ptr] = self.memory[self.ptr].wrapping_sub(1),
-                Instruction::Output => print!("{}", self.memory[self.ptr] as char),
-                Instruction::Input => {
+                Inc => self.memory[self.ptr] = self.memory[self.ptr].wrapping_add(1),
+                Dec => self.memory[self.ptr] = self.memory[self.ptr].wrapping_sub(1),
+                Output => print!("{}", self.memory[self.ptr] as char),
+                Input => {
                     use std::io::Read;
                     std::io::stdin()
                         .read_exact(&mut self.memory[self.ptr..self.ptr + 1])
                         .unwrap();
                 }
-                Instruction::MoveR => self.ptr = (self.ptr + 1) % self.memory.len(),
-                Instruction::MoveL => {
-                    self.ptr = (self.ptr + self.memory.len() - 1) % self.memory.len()
-                }
-                Instruction::JumpR => {
+                MoveR => self.ptr = (self.ptr + 1) % self.memory.len(),
+                MoveL => self.ptr = (self.ptr + self.memory.len() - 1) % self.memory.len(),
+                JumpR(pair_addr) => {
                     if self.memory[self.ptr] == 0 {
-                        let mut deep = 1;
-                        loop {
-                            if self.instructions.len() == self.pc + 1 {
-                                break 'program;
-                            }
-                            self.pc += 1;
-
-                            if self.instructions[self.pc] == Instruction::JumpR {
-                                deep += 1;
-                            } else if self.instructions[self.pc] == Instruction::JumpL {
-                                deep -= 1;
-                            }
-
-                            if deep == 0 {
-                                break;
-                            }
-                        }
+                        self.pc = pair_addr;
                     }
                 }
-                Instruction::JumpL => {
+                JumpL(pair_addr) => {
                     if self.memory[self.ptr] != 0 {
-                        let mut deep = 1;
-                        loop {
-                            if self.pc == 0 {
-                                break 'program;
-                            }
-                            self.pc -= 1;
-
-                            if self.instructions[self.pc] == Instruction::JumpL {
-                                deep += 1;
-                            } else if self.instructions[self.pc] == Instruction::JumpR {
-                                deep -= 1;
-                            }
-
-                            if deep == 0 {
-                                break;
-                            }
-                        }
+                        self.pc = pair_addr;
                     }
                 }
-                _ => {} // do nothing
             };
 
             self.pc += 1;

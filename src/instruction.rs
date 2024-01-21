@@ -6,6 +6,6 @@ pub enum Instruction {
     MoveL,
     Input,
     Output,
-    JumpR,
-    JumpL,
+    JumpR(usize),
+    JumpL(usize),
 }
