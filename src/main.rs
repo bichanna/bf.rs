@@ -1,26 +1,34 @@
 mod execution;
 mod instruction;
-mod interpreter;
+mod program;
 
 use std::process::ExitCode;
 
 pub use execution::ExecutionType;
 pub use instruction::Instruction;
-use interpreter::UnbalancedBrackets;
+pub use program::Program;
+use program::UnbalancedBrackets;
 
 fn execute(source: &[u8], execution_type: ExecutionType) -> ExitCode {
+    let mut program = match Program::new(source) {
+        Ok(x) => x,
+        Err(UnbalancedBrackets(c, addr)) => {
+            eprintln!(
+                "Error parsing file: didn't find pair for '{}' at inst index {}",
+                c, addr
+            );
+            return ExitCode::from(3);
+        }
+    };
+
     match execution_type {
-        ExecutionType::Interpreter => match interpreter::interpret(source) {
-            Ok(_) => ExitCode::from(0),
-            Err(UnbalancedBrackets(c, addr)) => {
-                eprintln!(
-                    "Error parsing file: didn't find pair of '{}' at inst index {}",
-                    c, addr
-                );
-                return ExitCode::from(3);
-            }
+        ExecutionType::Interpreter => match program.interpret() {
+            Ok(_) => {}
+            Err(err) => eprintln!("IO error: {}", err),
         },
     }
+
+    ExitCode::from(0)
 }
 
 fn main() -> ExitCode {
