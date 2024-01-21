@@ -44,7 +44,25 @@ impl Program {
                     match bracket_stack.pop() {
                         Some(pair_addr) => {
                             instructions[pair_addr] = JumpR(curr_addr);
-                            JumpL(pair_addr)
+
+                            match instructions.as_slice() {
+                                [.., JumpR(_), Add(n)] if n % 2 == 1 => {
+                                    let len = instructions.len();
+                                    instructions.drain(len - 2..);
+                                    Clear
+                                }
+                                &[.., JumpR(_), Add(255), Move(x), Add(1), Move(y)] if x == -y => {
+                                    let len = instructions.len();
+                                    instructions.drain(len - 5..);
+                                    AddTo(x)
+                                }
+                                &[.., JumpR(_), Move(x)] => {
+                                    let len = instructions.len();
+                                    instructions.drain(len - 2..);
+                                    MoveUntil(x)
+                                }
+                                _ => JumpL(pair_addr),
+                            }
                         }
                         None => return Err(UnbalancedBrackets(']', curr_addr)),
                     }
@@ -89,6 +107,22 @@ impl Program {
                 JumpL(pair_addr) => {
                     if self.memory[self.ptr] != 0 {
                         self.pc = pair_addr;
+                    }
+                }
+                Clear => self.memory[self.ptr] = 0,
+                AddTo(x) => {
+                    let len = self.memory.len() as isize;
+                    let x = (len + x % len) as usize;
+                    let to = (self.ptr + x) % len as usize;
+
+                    self.memory[to] = self.memory[to].wrapping_add(self.memory[self.ptr]);
+                    self.memory[self.ptr] = 0;
+                }
+                MoveUntil(x) => {
+                    let len = self.memory.len() as isize;
+                    let x = (len + x % len) as usize;
+                    while self.memory[self.ptr] != 0 {
+                        self.ptr = (self.ptr + x) % len as usize;
                     }
                 }
             };

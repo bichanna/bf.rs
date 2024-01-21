@@ -6,4 +6,7 @@ pub enum Instruction {
     Output,
     JumpR(usize),
     JumpL(usize),
+    Clear,
+    AddTo(isize),
+    MoveUntil(isize),
 }
