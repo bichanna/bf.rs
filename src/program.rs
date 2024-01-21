@@ -16,12 +16,24 @@ impl Program {
 
         for b in source {
             let inst = match b {
-                b'+' => Inc,
-                b'-' => Dec,
+                b'+' | b'-' => {
+                    let inc = if *b == b'+' { 1 } else { 1u8.wrapping_neg() };
+                    if let Some(Add(value)) = instructions.last_mut() {
+                        *value = value.wrapping_add(inc);
+                        continue;
+                    }
+                    Add(inc)
+                }
                 b'.' => Output,
                 b',' => Input,
-                b'>' => MoveR,
-                b'<' => MoveL,
+                b'>' | b'<' => {
+                    let inc = if *b == b'>' { 1 } else { -1 };
+                    if let Some(Move(value)) = instructions.last_mut() {
+                        *value += inc;
+                        continue;
+                    }
+                    Move(inc)
+                }
                 b'[' => {
                     let curr_addr = instructions.len();
                     bracket_stack.push(curr_addr);
@@ -58,15 +70,17 @@ impl Program {
     pub fn interpret(&mut self) -> std::io::Result<()> {
         'program: loop {
             match self.instructions[self.pc] {
-                Inc => self.memory[self.ptr] = self.memory[self.ptr].wrapping_add(1),
-                Dec => self.memory[self.ptr] = self.memory[self.ptr].wrapping_sub(1),
+                Add(x) => self.memory[self.ptr] = self.memory[self.ptr].wrapping_add(x),
                 Output => print!("{}", self.memory[self.ptr] as char),
                 Input => {
                     use std::io::Read;
                     std::io::stdin().read_exact(&mut self.memory[self.ptr..self.ptr + 1])?;
                 }
-                MoveR => self.ptr = (self.ptr + 1) % self.memory.len(),
-                MoveL => self.ptr = (self.ptr + self.memory.len() - 1) % self.memory.len(),
+                Move(x) => {
+                    let len = self.memory.len() as isize;
+                    let x = (len + x % len) as usize;
+                    self.ptr = (self.ptr + x) % len as usize;
+                }
                 JumpR(pair_addr) => {
                     if self.memory[self.ptr] == 0 {
                         self.pc = pair_addr;

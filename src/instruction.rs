@@ -1,9 +1,7 @@
-#[derive(PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Instruction {
-    Inc,
-    Dec,
-    MoveR,
-    MoveL,
+    Add(u8),
+    Move(isize),
     Input,
     Output,
     JumpR(usize),
